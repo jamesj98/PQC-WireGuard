@@ -6,12 +6,15 @@
 package device
 
 import (
+	"os"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/subtle"
 	"errors"
 	"hash"
+	"fmt"
 
+	"github.com/cloudflare/circl/kem/kyber/kyber768" /* Added by me */
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/curve25519"
 )
@@ -105,4 +108,111 @@ func (sk *NoisePrivateKey) sharedSecret(pk NoisePublicKey) (ss [NoisePublicKeySi
 		return ss, errInvalidPublicKey
 	}
 	return ss, nil
+}
+
+// Generate a PQC keypair
+func newPQCKEMKeypair() (publicKey []byte, privateKey []byte, err error) {
+    kem := kyber768.Scheme()
+
+    // Generate key pair
+    pk, sk, err := kem.GenerateKeyPair()
+    if err != nil {
+        return nil, nil, fmt.Errorf("key pair generation error: %v", err)
+    }
+
+    // Convert structured keys to byte slices
+    publicKey, err = pk.MarshalBinary()
+    if err != nil {
+        return nil, nil, fmt.Errorf("public key marshal error: %v", err)
+    }
+
+    privateKey, err = sk.MarshalBinary()
+    if err != nil {
+        return nil, nil, fmt.Errorf("private key marshal error: %v", err)
+    }
+
+    return publicKey, privateKey, nil
+}
+
+
+func encapsulatePQCSecret(pqcPublicKey []byte) (sharedSecret []byte, ciphertext []byte, err error) {
+    kem := kyber768.Scheme()
+
+    fmt.Printf("Encapsulating with PQC Public Key Size: %d (Expected: 1184)\n", len(pqcPublicKey))
+
+    // Convert byte slice to a structured PublicKey
+    pk, err := kem.UnmarshalBinaryPublicKey(pqcPublicKey)
+    if err != nil {
+        return nil, nil, fmt.Errorf("public key unmarshal error: %v", err)
+    }
+
+    // Perform encapsulation
+    ciphertext, sharedSecret, err = kem.Encapsulate(pk)
+
+    if err != nil {
+        return nil, nil, fmt.Errorf("encapsulation error: %v", err)
+    }
+
+    fmt.Printf("Encapsulation Output - Shared Secret Size: %d (Expected: 32)\n", len(sharedSecret))
+    fmt.Printf("Encapsulation Output - Ciphertext Size: %d (Expected: 1088)\n", len(ciphertext))
+
+    return sharedSecret, ciphertext, nil
+}
+
+
+
+
+
+
+// Decapsulate a PQC shared secret
+func decapsulatePQCSecret(ciphertext, pqcPrivateKey []byte) (sharedSecret []byte, err error) {
+    kem := kyber768.Scheme() // ✅ Use Kyber768 Scheme
+
+    // Convert byte slice to a structured PrivateKey
+    sk, err := kem.UnmarshalBinaryPrivateKey(pqcPrivateKey)
+    if err != nil {
+        return nil, err
+    }
+
+    // Perform decapsulation
+    sharedSecret, err = kem.Decapsulate(sk, ciphertext)
+    if err != nil {
+        return nil, fmt.Errorf("decapsulation failed: %v", err)
+    }
+
+    return sharedSecret, nil
+}
+
+func HybridKDF(finalKeySend, finalKeyReceive *[32]byte, chainKey, pqcSecret []byte, isInitiator bool) {
+    var intermediateKey [32]byte
+
+    // Mix both chainKey and pqcSecret
+    mac := hmac.New(func() hash.Hash {
+        h, _ := blake2s.New256(nil)
+        return h
+    }, chainKey)
+
+    mac.Write(pqcSecret)
+    mac.Sum(intermediateKey[:0])
+
+    // Expand into two keys
+    var key1, key2 [32]byte
+    HMAC1(&key1, intermediateKey[:], []byte{0x1})
+    HMAC2(&key2, intermediateKey[:], key1[:], []byte{0x2})
+
+    // Ensure initiator and responder use opposite keys
+    if isInitiator {
+        *finalKeySend = key1  // Initiator encrypts with key1
+        *finalKeyReceive = key2 // Initiator decrypts with key2
+    } else {
+        *finalKeySend = key2  // Responder encrypts with key2
+        *finalKeyReceive = key1 // Responder decrypts with key1
+    }
+
+    fmt.Printf("[DEBUG] HybridKDF Output (isInitiator=%v) - Send Key: %x, Receive Key: %x\n",
+        isInitiator, *finalKeySend, *finalKeyReceive)
+    os.Stdout.Sync()
+
+    // Zero out memory for security
+    setZero(intermediateKey[:])
 }

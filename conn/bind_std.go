@@ -48,6 +48,14 @@ type StdNetBind struct {
 	blackhole6 bool
 }
 
+func totalSize(bufs [][]byte) int {
+	total := 0
+	for _, buf := range bufs {
+		total += len(buf)
+	}
+	return total
+}
+
 func NewStdNetBind() Bind {
 	return &StdNetBind{
 		udpAddrPool: sync.Pool{
@@ -273,6 +281,8 @@ func (s *StdNetBind) receiveIP(
 		ep := &StdNetEndpoint{AddrPort: addrPort} // TODO: remove allocation
 		getSrcFromControl(msg.OOB[:msg.NN], ep)
 		eps[i] = ep
+
+		fmt.Printf("[DEBUG] Received UDP packet - Size: %d bytes from %s\n", sizes[i], eps[i].DstToString())
 	}
 	return numMsgs, nil
 }
@@ -360,6 +370,9 @@ func (s *StdNetBind) Send(bufs [][]byte, endpoint Endpoint) error {
 	if conn == nil {
 		return syscall.EAFNOSUPPORT
 	}
+
+	fmt.Printf("[DEBUG] Sending UDP packet - Buffers: %d, Total Size: %d bytes, Destination: %s\n",
+		len(bufs), totalSize(bufs), endpoint.DstToString())
 
 	msgs := s.getMessages()
 	defer s.putMessages(msgs)

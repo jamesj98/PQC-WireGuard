@@ -1,8 +1,12 @@
 module golang.zx2c4.com/wireguard
 
-go 1.20
+go 1.22.0
+
+toolchain go1.23.5
 
 require (
+	github.com/cloudflare/circl v1.5.0
+	github.com/stretchr/testify v1.10.0
 	golang.org/x/crypto v0.13.0
 	golang.org/x/net v0.15.0
 	golang.org/x/sys v0.12.0
@@ -11,6 +15,9 @@ require (
 )
 
 require (
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/google/btree v1.0.1 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
