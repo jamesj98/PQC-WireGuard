@@ -1,6 +1,6 @@
 # Go Implementation of [WireGuard](https://www.wireguard.com/)
 
-This is an implementation of WireGuard in Go.
+This is an implementation of WireGuard in Go that utilises Hybrid cryptograhpy in its key exchange.
 
 ## Usage
 
